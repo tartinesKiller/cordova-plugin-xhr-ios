@@ -35,6 +35,7 @@ interface XHRResponse {
     responseText?: string;
     responseHeaders: {[header: string]: string};
     allResponseHeaders: string;
+    errorCode?: Number;
 }
 
 interface FormDataEntry {
@@ -44,6 +45,10 @@ interface FormDataEntry {
     fileName?: string;
     mimeType?: string;
 }
+
+enum ErrorCodes {
+    Timeout = -1001,
+};
 
 class XHREventTarget implements XMLHttpRequestEventTarget {
     onprogress: (event: ProgressEvent) => void = null;
@@ -130,7 +135,7 @@ class XHR extends XHREventTarget implements XMLHttpRequest {
     private _responseType: XMLHttpRequestResponseType = '';
 
     // TODO: Support these.
-    timeout = 60;
+    timeout = 5;
     withCredentials = false;
     responseURL: string = null;
     upload: XMLHttpRequestUpload = null;
@@ -181,24 +186,28 @@ class XHR extends XHREventTarget implements XMLHttpRequest {
         }
 
         promise.then(body => exec((response: XHRResponse) => {
-            this.status = response.status;
-            this.statusText = response.statusText;
-            this.response = response.responseText;
-            this.responseText = response.responseText;
-            this.responseHeaders = response.responseHeaders;
-            this.allResponseHeaders = response.allResponseHeaders;
-            this.readyState = XMLHttpRequest.DONE;
+            if (response.errorCode === ErrorCodes.Timeout) {
+                this.dispatchEvent(new ProgressEvent("timeout"));
+            } else {
+                this.status = response.status;
+                this.statusText = response.statusText;
+                this.response = response.responseText;
+                this.responseText = response.responseText;
+                this.responseHeaders = response.responseHeaders;
+                this.allResponseHeaders = response.allResponseHeaders;
+                this.readyState = XMLHttpRequest.DONE;
 
-            if (this.responseType === 'arraybuffer') {
-                this.response = new Uint8Array(JSON.parse(response.response)).buffer;
+                if (this.responseType === 'arraybuffer') {
+                    this.response = new Uint8Array(JSON.parse(response.response)).buffer;
+                }
+
+                this.dispatchEvent(new ProgressEvent('load'));
+                this.dispatchEvent(new ProgressEvent('loadend'));
             }
-
-            this.dispatchEvent(new ProgressEvent('load'));
-            this.dispatchEvent(new ProgressEvent('loadend'));
         }, (error) => {
             this.dispatchEvent(new ProgressEvent('error'));
             this.readyState = XMLHttpRequest.DONE;
-        }, 'CORS', 'send', [this.method, this.path, this.requestHeaders, body, this._responseType || 'text', this.mimeType]));
+        }, 'CORS', 'send', [this.method, this.path, this.requestHeaders, body, this._responseType || 'text', this.mimeType, this.timeout]));
     }
 
     abort() {

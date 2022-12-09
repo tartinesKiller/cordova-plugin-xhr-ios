@@ -28,9 +28,12 @@
     NSObject *data = [command argumentAtIndex:3];
     NSString *responseType = [command argumentAtIndex:4];
     NSString *mimeType = [command argumentAtIndex:5];
+    NSNumber *timeoutIntervalAsMs = [command argumentAtIndex:6];
+    double timeoutIntervalAsSec = timeoutIntervalAsMs.doubleValue / 1000;
     
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:path]];
     [request setHTTPMethod:method];
+    [request setTimeoutInterval:timeoutIntervalAsSec];
     if (![data isEqual:[NSNull null]]) {
         if ([data isKindOfClass:NSString.class]) {
             [request setHTTPBody:[(NSString *)data dataUsingEncoding:NSUTF8StringEncoding]];
@@ -47,6 +50,14 @@
     }];
     
     NSURLSessionDataTask *task = [_session dataTaskWithRequest:request completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable urlResponse, NSError * _Nullable error) {
+        if (error != nil) {
+            [self.commandDelegate sendPluginResult:
+             [CDVPluginResult resultWithStatus:CDVCommandStatus_OK
+                           messageAsDictionary:@{
+                                                 @"errorCode": @(error.code)
+                                                 }]
+                                        callbackId:command.callbackId];
+        }
         NSNumber *statusCode = @200;
         NSString *statusText = @"OK";
         id response = [NSNull null];
